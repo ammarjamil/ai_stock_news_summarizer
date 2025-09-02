@@ -15,14 +15,14 @@ from langchain.prompts import PromptTemplate
 import json
 from template.prompt_template_new import prompt
 import feedparser
-
-
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from bs4 import BeautifulSoup
 import re
 from urllib.parse import urljoin, urlparse
 
 app = FastAPI(title="Financial News Summarizer", version="1.0.0")
-
+app.mount("/static", StaticFiles(directory="static"), name="static")
 # Models
 class NewsItem(BaseModel):
     headline: str
@@ -194,62 +194,216 @@ class NewsService:
         self.scraper = WebScraperService()
     
     async def fetch_stock_news(self, symbol: str) -> List[dict]:
-        """Fetch stock news from multiple sources"""
+        """Fetch Pakistan stock news using web scraping from multiple Pakistani sources"""
         news_articles = []
         
-        # Method 1: Alpha Vantage News & Sentiment
-        try:
-            async with httpx.AsyncClient() as client:
-                url = f"https://www.alphavantage.co/query"
-                params = {
-                    "function": "NEWS_SENTIMENT",
-                    "tickers": symbol,
-                    "apikey": ALPHA_VANTAGE_KEY,
-                    "limit": 10
-                }
-                response = await client.get(url, params=params)
-                data = response.json()
-                
-                if "feed" in data:
-                    for article in data["feed"][:5]:  # Limit to 5 articles
-                        news_articles.append({
-                            "headline": article.get("title", ""),
-                            "content": article.get("summary", ""),
-                            "source": article.get("source", "Alpha Vantage"),
-                            "url": article.get("url", ""),
-                            "published_at": article.get("time_published", "")
-                        })
-        except Exception as e:
-            print(f"Alpha Vantage error: {e}")
+        # Headers to avoid bot detection
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+        }
         
-        # Method 2: NewsAPI as fallback
+        # Method 1: Business Recorder (Pakistani business news)
         try:
-            if len(news_articles) < 3:
-                async with httpx.AsyncClient() as client:
-                    url = "https://newsapi.org/v2/everything"
-                    params = {
-                        "q": f"{symbol} stock",
-                        "apiKey": NEWS_API_KEY,
-                        "language": "en",
-                        "sortBy": "publishedAt",
-                        "pageSize": 5
-                    }
-                    response = await client.get(url, params=params)
-                    data = response.json()
-                    
-                    if data.get("status") == "ok":
-                        for article in data.get("articles", [])[:3]:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                url = "https://www.brecorder.com/news/40007971/stocks"
+                response = await client.get(url, headers=headers)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                articles = soup.find_all('div', class_='story-content')
+                for article in articles[:5]:
+                    headline_elem = article.find('h3') or article.find('h2') or article.find('a')
+                    if headline_elem:
+                        headline = headline_elem.get_text(strip=True)
+                        link = headline_elem.find('a')
+                        article_url = urljoin(url, link['href']) if link and link.get('href') else ""
+                        
+                        # Get summary/content
+                        content_elem = article.find('p')
+                        content = content_elem.get_text(strip=True) if content_elem else ""
+                        
+                        if symbol.lower() in headline.lower() or "stock" in headline.lower():
                             news_articles.append({
-                                "headline": article.get("title", ""),
-                                "content": article.get("description", ""),
-                                "source": article.get("source", {}).get("name", "NewsAPI"),
-                                "url": article.get("url", ""),
-                                "published_at": article.get("publishedAt", "")
+                                "headline": headline,
+                                "content": content,
+                                "source": "Business Recorder",
+                                "url": article_url,
+                                "published_at": datetime.now().isoformat()
                             })
         except Exception as e:
-            print(f"NewsAPI error: {e}")
+            print(f"Business Recorder scraping error: {e}")
         
-        return news_articles
+        # Method 2: Dawn Business Section
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                url = "https://www.dawn.com/business"
+                response = await client.get(url, headers=headers)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                articles = soup.find_all('article', class_='story')
+                for article in articles[:5]:
+                    headline_elem = article.find('h2', class_='story__title')
+                    if headline_elem:
+                        headline = headline_elem.get_text(strip=True)
+                        link = headline_elem.find('a')
+                        article_url = urljoin(url, link['href']) if link and link.get('href') else ""
+                        
+                        # Get excerpt
+                        excerpt_elem = article.find('div', class_='story__excerpt')
+                        content = excerpt_elem.get_text(strip=True) if excerpt_elem else ""
+                        
+                        # Get timestamp
+                        time_elem = article.find('span', class_='story__time')
+                        published_at = time_elem.get_text(strip=True) if time_elem else datetime.now().isoformat()
+                        
+                        if any(term in headline.lower() for term in [symbol.lower(), "stock", "market", "kse", "psx"]):
+                            news_articles.append({
+                                "headline": headline,
+                                "content": content,
+                                "source": "Dawn Business",
+                                "url": article_url,
+                                "published_at": published_at
+                            })
+        except Exception as e:
+            print(f"Dawn Business scraping error: {e}")
+        
+        # Method 3: The News Business Section
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                url = "https://www.thenews.com.pk/latest/category/business"
+                response = await client.get(url, headers=headers)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                articles = soup.find_all('div', class_='col-sm-12')
+                for article in articles[:5]:
+                    headline_elem = article.find('h3') or article.find('h2')
+                    if headline_elem:
+                        link = headline_elem.find('a')
+                        if link:
+                            headline = link.get_text(strip=True)
+                            article_url = urljoin(url, link['href']) if link.get('href') else ""
+                            
+                            # Get content/description
+                            content_elem = article.find('p')
+                            content = content_elem.get_text(strip=True) if content_elem else ""
+                            
+                            if any(term in headline.lower() for term in [symbol.lower(), "stock", "shares", "market"]):
+                                news_articles.append({
+                                    "headline": headline,
+                                    "content": content,
+                                    "source": "The News",
+                                    "url": article_url,
+                                    "published_at": datetime.now().isoformat()
+                                })
+        except Exception as e:
+            print(f"The News scraping error: {e}")
+        
+        # Method 4: Pakistan Stock Exchange Official News
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                url = "https://www.psx.com.pk/psx/news-events/psx-news"
+                response = await client.get(url, headers=headers)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Look for news items in PSX format
+                news_items = soup.find_all('div', class_='news-item') or soup.find_all('tr')
+                for item in news_items[:5]:
+                    headline_elem = item.find('td') or item.find('h3') or item.find('a')
+                    if headline_elem:
+                        headline = headline_elem.get_text(strip=True)
+                        link = item.find('a')
+                        article_url = urljoin(url, link['href']) if link and link.get('href') else ""
+                        
+                        if len(headline) > 10:  # Filter out short/empty headlines
+                            news_articles.append({
+                                "headline": headline,
+                                "content": "Pakistan Stock Exchange official news",
+                                "source": "Pakistan Stock Exchange",
+                                "url": article_url,
+                                "published_at": datetime.now().isoformat()
+                            })
+        except Exception as e:
+            print(f"PSX scraping error: {e}")
+        
+        # Method 5: Express Tribune Business
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                url = "https://tribune.com.pk/business"
+                response = await client.get(url, headers=headers)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                articles = soup.find_all('div', class_='story-list-item')
+                for article in articles[:3]:
+                    headline_elem = article.find('h3') or article.find('h2')
+                    if headline_elem:
+                        link = headline_elem.find('a')
+                        if link:
+                            headline = link.get_text(strip=True)
+                            article_url = urljoin(url, link['href'])
+                            
+                            # Get excerpt
+                            excerpt_elem = article.find('p', class_='excerpt')
+                            content = excerpt_elem.get_text(strip=True) if excerpt_elem else ""
+                            
+                            if any(term in headline.lower() for term in [symbol.lower(), "stock", "market", "economy"]):
+                                news_articles.append({
+                                    "headline": headline,
+                                    "content": content,
+                                    "source": "Express Tribune",
+                                    "url": article_url,
+                                    "published_at": datetime.now().isoformat()
+                                })
+        except Exception as e:
+            print(f"Express Tribune scraping error: {e}")
+        
+        # Method 6: Search specific company news if symbol provided
+        if symbol and len(symbol) > 2:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    # Search Business Recorder for specific company
+                    search_url = f"https://www.brecorder.com/search?q={symbol}"
+                    response = await client.get(search_url, headers=headers)
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    
+                    search_results = soup.find_all('div', class_='search-result-item')[:3]
+                    for result in search_results:
+                        headline_elem = result.find('h3') or result.find('a')
+                        if headline_elem:
+                            headline = headline_elem.get_text(strip=True)
+                            link = result.find('a')
+                            article_url = link['href'] if link and link.get('href') else ""
+                            
+                            content_elem = result.find('p')
+                            content = content_elem.get_text(strip=True) if content_elem else ""
+                            
+                            news_articles.append({
+                                "headline": headline,
+                                "content": content,
+                                "source": "Business Recorder Search",
+                                "url": article_url,
+                                "published_at": datetime.now().isoformat()
+                            })
+            except Exception as e:
+                print(f"Symbol-specific search error: {e}")
+        
+        # Remove duplicates and filter relevant news
+        seen_headlines = set()
+        unique_articles = []
+        
+        for article in news_articles:
+            headline = article.get("headline", "").strip()
+            if headline and headline not in seen_headlines and len(headline) > 20:
+                # Additional relevance filtering
+                if (symbol and symbol.lower() in headline.lower()) or \
+                any(keyword in headline.lower() for keyword in ["stock", "market", "shares", "trading", "psx", "kse", "economy"]):
+                    seen_headlines.add(headline)
+                    unique_articles.append(article)
+        
+        return unique_articles[:10]  # Return max 10 unique articles
     
     async def fetch_crypto_news(self, symbol: str) -> List[dict]:
         """Fetch cryptocurrency news using web scraping and APIs"""
@@ -330,19 +484,21 @@ class LLMService:
         
         # Create a more focused prompt template
         self.prompt_template = PromptTemplate(
-            input_variables=["headline","symbol","content"],
+            input_variables=["news_items"],
             template=prompt
         )
 
-    async def analyze_news(self, headline: str, content: str, symbol: str) -> dict:
+    async def analyze_news(self, news_items: str) -> dict:
         """Analyze news using Groq LLM"""
         try:
             # prompt = self.create_analysis_prompt(headline, content, symbol)
-            formatted_prompt = self.prompt_template.format(headline=headline,symbol=content,content=content)
+            formatted_prompt = self.prompt_template.format(news_items=news_items)
 
             if(os.getenv("DEBUG").lower() == "true"):
                 with open("prompt.txt", "w", encoding="utf-8") as f:
                     f.write(formatted_prompt)
+            # response={}
+            # return
             response = self.llm.invoke(formatted_prompt)
 
             print(f"Received response, length: {len(response.content)} characters")
@@ -352,21 +508,13 @@ class LLMService:
                 
             # Parse JSON response
             # response_text = self.output_parser.parse(response.content)
-            response=response.content
-            start = response.find('{')
-            end = response.rfind('}') + 1
-            json_str = response[start:end]
-            response_text = json.loads(json_str)
-            return {
-                    "summary": response_text.get("summary", "Analysis unavailable"),
-                    "sentiment": response_text.get("sentiment", "Neutral"),
-                    "confidence": response_text.get("confidence", "Low")
-                }
+            response_text = json.loads(response.content)
+            return response_text.get('analyses',[])
         
                 
         except Exception as e:
             print(f"LLM analysis error: {e}")
-            return self.fallback_analysis(headline, content)
+            return self.fallback_analysis(news_items)
     
     def fallback_analysis(self, headline: str, content: str) -> dict:
         """Simple rule-based fallback analysis"""
@@ -429,17 +577,17 @@ async def scraping_status():
         "summary": f"Active sources: {len([k for k, v in status.items() if v['status'] == 'active'])}/3"
     }
 
-@app.get("/")
-async def root():
-    return {
-        "message": "Financial News Summarizer API",
-        "version": "1.0.0",
-        "endpoints": {
-            "stock_news": "/news/stocks/{symbol}",
-            "crypto_news": "/news/crypto/{symbol}",
-            "general_news": "/news/{symbol}"
-        }
-    }
+# @app.get("/")
+# async def root():
+#     return {
+#         "message": "Financial News Summarizer API",
+#         "version": "1.0.0",
+#         "endpoints": {
+#             "stock_news": "/news/stocks/{symbol}",
+#             "crypto_news": "/news/crypto/{symbol}",
+#             "general_news": "/news/{symbol}"
+#         }
+#     }
 
 @app.get("/news/stocks/{symbol}", response_model=NewsResponse)
 async def get_stock_news(symbol: str):
@@ -495,32 +643,14 @@ async def get_crypto_news(symbol: str):
         if not raw_news:
             raise HTTPException(status_code=404, detail=f"No news found for crypto symbol: {symbol}")
         
-        # Analyze each news item
-        analyzed_news = []
-        for article in raw_news:
-            analysis = await llm_service.analyze_news(
-                article["headline"],
-                article["content"],
-                symbol
-            )
-            
-            news_item = NewsItem(
-                headline=article["headline"],
-                summary=analysis["summary"],
-                sentiment=analysis["sentiment"],
-                confidence=analysis["confidence"],
-                source=article["source"],
-                published_at=article["published_at"],
-                url=article.get("url"),
-                market_impact=analysis.get("market_impact"),
-                key_factors=analysis.get("key_factors", [])
-            )
-            analyzed_news.append(news_item)
-        
+        # Get news from LLM:
+        analysis = await llm_service.analyze_news(
+            raw_news
+        )
         return NewsResponse(
             symbol=symbol.upper(),
-            news=analyzed_news,
-            total_articles=len(analyzed_news),
+            news=analysis,
+            total_articles=len(analysis),
             timestamp=datetime.now().isoformat()
         )
         
@@ -566,6 +696,18 @@ async def health_check():
             "debug_mode": DEBUG
         }
     }
+# Add a route to serve the HTML dashboard at the root
+@app.get("/dashboard")
+async def dashboard():
+    """Serve the news dashboard"""
+    return FileResponse('static/index.html')
+
+# Optional: Redirect root to dashboard
+@app.get("/")
+async def root():
+    """Redirect to dashboard or show API info"""
+    return FileResponse('static/index.html')  # Serve dashboard
+    # OR keep your existing root endpoint and access dashboard at /dashboard
 
 if __name__ == "__main__":
     import uvicorn
