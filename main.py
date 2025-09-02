@@ -15,6 +15,8 @@ from parser.json_output_parser import JSONOutputParser
 from langchain.prompts import PromptTemplate
 import json
 from template.prompt_template_new import prompt
+from playwright.async_api import async_playwright
+import feedparser
 
 
 from bs4 import BeautifulSoup
@@ -60,109 +62,85 @@ class WebScraperService:
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
         }
+
+
     
     async def scrape_coindesk(self, search_term: str = "") -> List[dict]:
         """Scrape latest crypto news from CoinDesk"""
-        articles = []
+        articles: List[dict] = []
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                url = "https://www.coindesk.com/"
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
                 if search_term:
-                    # Search for specific crypto
-                    search_url = f"https://www.coindesk.com/search?s={search_term}"
-                    response = await client.get(search_url, headers=self.headers)
+                    tag = search_term.lower()
+                    url = f"https://www.coindesk.com/tag/{tag}/"
                 else:
-                    # Get latest news from homepage
-                    response = await client.get(url, headers=self.headers)
-                
+                    url = "https://www.coindesk.com/"
+
+                response = await client.get(url, headers=self.headers)
+
                 if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    
-                    # Find article elements (CoinDesk structure)
-                    article_elements = soup.find_all(['article', 'div'], class_=re.compile(r'articleTextSection|story|post'))[:5]
-                    
+                    soup = BeautifulSoup(response.text, "html.parser")
+
+                    article_elements = soup.find_all(
+                        ["article", "div"],
+                        class_=re.compile(r"articleTextSection|story|post"),
+                        limit=5,
+                    )
+
                     if not article_elements:
-                        # Fallback: look for any links with typical news patterns
-                        article_elements = soup.find_all('a', href=re.compile(r'/\d{4}/\d{2}/\d{2}/'))[:5]
-                    
+                        article_elements = soup.find_all(
+                            "a", href=re.compile(r"/\d{4}/\d{2}/\d{2}/"), limit=5
+                        )
+
                     for element in article_elements:
                         try:
-                            headline_elem = element.find(['h1', 'h2', 'h3', 'h4']) or element
+                            headline_elem = element.find(["h1", "h2", "h3", "h4"]) or element
                             headline = headline_elem.get_text(strip=True) if headline_elem else ""
-                            
-                            # Get URL
-                            link_elem = element if element.name == 'a' else element.find('a')
-                            url = ""
-                            if link_elem and link_elem.get('href'):
-                                url = urljoin("https://www.coindesk.com/", link_elem['href'])
-                            
-                            # Get summary/description
-                            summary_elem = element.find(['p', 'div'], class_=re.compile(r'excerpt|summary|description'))
+
+                            link_elem = element if element.name == "a" else element.find("a")
+                            news_url = ""
+                            if link_elem and link_elem.get("href"):
+                                news_url = urljoin("https://www.coindesk.com/", link_elem["href"])
+
+                            summary_elem = element.find(
+                                ["p", "div"], class_=re.compile(r"excerpt|summary|description")
+                            )
                             summary = summary_elem.get_text(strip=True) if summary_elem else headline
-                            
+
                             if headline and len(headline) > 10:
-                                articles.append({
-                                    "headline": headline[:200],
-                                    "content": summary[:500],
-                                    "source": "CoinDesk",
-                                    "url": url,
-                                    "published_at": datetime.now().isoformat()
-                                })
-                        except Exception as e:
+                                articles.append(
+                                    {
+                                        "headline": headline[:200],
+                                        "content": summary[:500],
+                                        "source": "CoinDesk",
+                                        "url": news_url,
+                                        "published_at": datetime.now().isoformat(),
+                                    }
+                                )
+                        except Exception:
                             continue
-                            
+
         except Exception as e:
             print(f"CoinDesk scraping error: {e}")
-        
+
         return articles
+
     
     async def scrape_cointelegraph(self, search_term: str = "") -> List[dict]:
-        """Scrape crypto news from Cointelegraph"""
-        articles = []
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                if search_term:
-                    url = f"https://cointelegraph.com/search?query={search_term}"
-                else:
-                    url = "https://cointelegraph.com/news"
-                
-                response = await client.get(url, headers=self.headers)
-                
-                if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    
-                    # Find article elements
-                    article_elements = soup.find_all(['article', 'div'], class_=re.compile(r'post|article|story'))[:5]
-                    
-                    for element in article_elements:
-                        try:
-                            headline_elem = element.find(['h1', 'h2', 'h3', 'a'])
-                            headline = headline_elem.get_text(strip=True) if headline_elem else ""
-                            
-                            # Get URL
-                            link_elem = element.find('a')
-                            url = ""
-                            if link_elem and link_elem.get('href'):
-                                url = urljoin("https://cointelegraph.com/", link_elem['href'])
-                            
-                            # Get summary
-                            summary_elem = element.find(['p', 'div'], class_=re.compile(r'excerpt|summary'))
-                            summary = summary_elem.get_text(strip=True) if summary_elem else headline
-                            
-                            if headline and len(headline) > 10:
-                                articles.append({
-                                    "headline": headline[:200],
-                                    "content": summary[:500],
-                                    "source": "Cointelegraph",
-                                    "url": url,
-                                    "published_at": datetime.now().isoformat()
-                                })
-                        except Exception as e:
-                            continue
-                            
-        except Exception as e:
-            print(f"Cointelegraph scraping error: {e}")
+        base_url = "https://cointelegraph.com/rss"
+        url = f"{base_url}/tag/{search_term}" if search_term else base_url
         
+        feed = feedparser.parse(url)
+        articles = []
+
+        for entry in feed.entries[:5]:
+            articles.append({
+                "headline": entry.title,
+                "content": entry.summary,
+                "source": "Cointelegraph",
+                "url": entry.link,
+                "published_at": datetime(*entry.published_parsed[:6]).isoformat()
+            })
         return articles
     
     async def scrape_decrypt(self, search_term: str = "") -> List[dict]:
