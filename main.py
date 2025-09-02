@@ -15,6 +15,8 @@ from langchain.prompts import PromptTemplate
 import json
 from template.prompt_template_new import prompt
 import feedparser
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 
 from bs4 import BeautifulSoup
@@ -22,7 +24,7 @@ import re
 from urllib.parse import urljoin, urlparse
 
 app = FastAPI(title="Financial News Summarizer", version="1.0.0")
-
+app.mount("/static", StaticFiles(directory="static"), name="static")
 # Models
 class NewsItem(BaseModel):
     headline: str
@@ -429,17 +431,6 @@ async def scraping_status():
         "summary": f"Active sources: {len([k for k, v in status.items() if v['status'] == 'active'])}/3"
     }
 
-@app.get("/")
-async def root():
-    return {
-        "message": "Financial News Summarizer API",
-        "version": "1.0.0",
-        "endpoints": {
-            "stock_news": "/news/stocks/{symbol}",
-            "crypto_news": "/news/crypto/{symbol}",
-            "general_news": "/news/{symbol}"
-        }
-    }
 
 @app.get("/news/stocks/{symbol}", response_model=NewsResponse)
 async def get_stock_news(symbol: str):
@@ -566,6 +557,19 @@ async def health_check():
             "debug_mode": DEBUG
         }
     }
+
+# Add a route to serve the HTML dashboard at the root
+@app.get("/dashboard")
+async def dashboard():
+    """Serve the news dashboard"""
+    return FileResponse('static/index.html')
+
+# Optional: Redirect root to dashboard
+@app.get("/")
+async def root():
+    """Redirect to dashboard or show API info"""
+    return FileResponse('static/index.html')  # Serve dashboard
+    # OR keep your existing root endpoint and access dashboard at /dashboard
 
 if __name__ == "__main__":
     import uvicorn
