@@ -7,7 +7,6 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 import httpx
-import asyncio
 from datetime import datetime
 import os
 from langchain_groq import ChatGroq
@@ -15,14 +14,12 @@ from parser.json_output_parser import JSONOutputParser
 from langchain.prompts import PromptTemplate
 import json
 from template.prompt_template_new import prompt
-from playwright.async_api import async_playwright
 import feedparser
 
 
 from bs4 import BeautifulSoup
 import re
 from urllib.parse import urljoin, urlparse
-import time
 
 app = FastAPI(title="Financial News Summarizer", version="1.0.0")
 
