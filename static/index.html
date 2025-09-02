@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial News Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .search-section {
+            padding: 40px;
+            background: white;
+        }
+
+        .search-container {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            align-items: end;
+        }
+
+        .search-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .search-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .search-button {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+
+        .search-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .search-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .results-section {
+            padding: 0 40px 40px;
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .results-title {
+            font-size: 1.5rem;
+            color: #333;
+            font-weight: 700;
+        }
+
+        .results-count {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .news-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 25px;
+        }
+
+        .news-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            border: 1px solid #f0f0f0;
+        }
+
+        .news-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .news-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+        }
+
+        .news-source {
+            background: #f8f9fa;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #666;
+        }
+
+        .news-date {
+            text-align: right;
+            font-size: 0.8rem;
+        }
+
+        .date-absolute {
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .date-relative {
+            color: #888;
+            font-style: italic;
+        }
+
+        .news-headline {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 15px;
+            line-height: 1.4;
+        }
+
+        .news-summary {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .news-metadata {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .sentiment {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .sentiment.bullish {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .sentiment.bearish {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .sentiment.neutral {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .confidence {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .news-url {
+            display: inline-block;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-top: 10px;
+            transition: color 0.3s ease;
+        }
+
+        .news-url:hover {
+            color: #764ba2;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .no-results h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .api-status {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            border-left: 4px solid #667eea;
+        }
+
+        .api-status.error {
+            background: #fff5f5;
+            border-left-color: #e53e3e;
+            color: #c53030;
+        }
+
+        .api-status.success {
+            background: #f0fff4;
+            border-left-color: #38a169;
+            color: #2f855a;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 0;
+                border-radius: 0;
+            }
+
+            .header {
+                padding: 30px 20px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .search-section, .results-section {
+                padding: 30px 20px;
+            }
+
+            .search-container {
+                flex-direction: column;
+            }
+
+            .search-group {
+                min-width: 100%;
+            }
+
+            .news-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .results-header {
+                flex-direction: column;
+                align-items: start;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📈 Financial News Dashboard</h1>
+            <p>Get AI-powered analysis of stocks and cryptocurrency news</p>
+        </div>
+
+        <div class="search-section">
+            <div id="apiStatus" class="api-status" style="display: none;">
+                <span id="apiStatusText">Checking API connection...</span>
+            </div>
+
+            <div class="search-container">
+                <div class="search-group">
+                    <label for="symbolInput">Symbol</label>
+                    <input 
+                        type="text" 
+                        id="symbolInput" 
+                        class="search-input" 
+                        placeholder="e.g., AAPL, BTC, ETH, MSFT"
+                        maxlength="10"
+                    >
+                </div>
+                <div class="search-group">
+                    <label for="typeSelect">Type</label>
+                    <select id="typeSelect" class="search-input">
+                        <option value="auto">Auto-detect</option>
+                        <option value="stocks">Stocks</option>
+                        <option value="crypto">Cryptocurrency</option>
+                    </select>
+                </div>
+                <button id="searchButton" class="search-button" onclick="searchNews()">
+                    Search News
+                </button>
+            </div>
+        </div>
+
+        <div id="loadingSection" class="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Fetching and analyzing news...</p>
+        </div>
+
+        <div id="resultsSection" class="results-section" style="display: none;">
+            <div class="results-header">
+                <h2 id="resultsTitle" class="results-title"></h2>
+                <span id="resultsCount" class="results-count"></span>
+            </div>
+            <div id="newsGrid" class="news-grid"></div>
+        </div>
+
+        <div id="errorSection" class="error" style="display: none;"></div>
+        <div id="noResultsSection" class="no-results" style="display: none;">
+            <h3>No News Found</h3>
+            <p>Try searching for a different symbol or check back later.</p>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = 'http://localhost:8000'; // Change this to your API URL
+        
+        // State
+        let isLoading = false;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            checkApiStatus();
+            
+            // Add enter key support
+            document.getElementById('symbolInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !isLoading) {
+                    searchNews();
+                }
+            });
+        });
+
+        async function checkApiStatus() {
+            const statusElement = document.getElementById('apiStatus');
+            const statusText = document.getElementById('apiStatusText');
+            
+            statusElement.style.display = 'block';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/health`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusElement.className = 'api-status success';
+                    statusText.textContent = '✅ API is connected and ready';
+                    setTimeout(() => statusElement.style.display = 'none', 3000);
+                } else {
+                    throw new Error('API health check failed');
+                }
+            } catch (error) {
+                statusElement.className = 'api-status error';
+                statusText.textContent = '❌ Unable to connect to API. Make sure the server is running on ' + API_BASE_URL;
+            }
+        }
+
+        async function searchNews() {
+            const symbol = document.getElementById('symbolInput').value.trim().toUpperCase();
+            const type = document.getElementById('typeSelect').value;
+            
+            if (!symbol) {
+                showError('Please enter a symbol (e.g., AAPL, BTC, ETH)');
+                return;
+            }
+
+            if (isLoading) return;
+            
+            isLoading = true;
+            showLoading();
+            hideError();
+            hideResults();
+            hideNoResults();
+
+            try {
+                let endpoint;
+                if (type === 'auto') {
+                    endpoint = `/news/${symbol}`;
+                } else if (type === 'stocks') {
+                    endpoint = `/news/stocks/${symbol}`;
+                } else {
+                    endpoint = `/news/crypto/${symbol}`;
+                }
+
+                const response = await fetch(`${API_BASE_URL}${endpoint}`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayResults(data);
+                } else {
+                    if (response.status === 404) {
+                        showNoResults();
+                    } else {
+                        showError(data.detail || 'An error occurred while fetching news');
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching news:', error);
+                showError('Failed to connect to the API. Please check your connection and try again.');
+            } finally {
+                isLoading = false;
+                hideLoading();
+            }
+        }
+
+        function displayResults(data) {
+            const resultsSection = document.getElementById('resultsSection');
+            const resultsTitle = document.getElementById('resultsTitle');
+            const resultsCount = document.getElementById('resultsCount');
+            const newsGrid = document.getElementById('newsGrid');
+
+            resultsTitle.textContent = `News for ${data.symbol}`;
+            resultsCount.textContent = `${data.total_articles} articles`;
+            
+            newsGrid.innerHTML = '';
+
+            if (data.news && data.news.length > 0) {
+                data.news.forEach(article => {
+                    const newsCard = createNewsCard(article);
+                    newsGrid.appendChild(newsCard);
+                });
+                resultsSection.style.display = 'block';
+            } else {
+                showNoResults();
+            }
+        }
+
+        function createNewsCard(article) {
+            const card = document.createElement('div');
+            card.className = 'news-card';
+
+            const sentimentClass = article.sentiment.toLowerCase();
+            const sentimentEmoji = {
+                'bullish': '📈',
+                'bearish': '📉',
+                'neutral': '➡️'
+            };
+
+            // Format the published date with more detail
+            const publishedDate = new Date(article.published_at);
+            const formattedDate = publishedDate.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+            const formattedTime = publishedDate.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            // Calculate relative time (e.g., "2 hours ago")
+            const now = new Date();
+            const diffMs = now - publishedDate;
+            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffDays = Math.floor(diffHours / 24);
+            
+            let relativeTime;
+            if (diffDays > 0) {
+                relativeTime = `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+            } else if (diffHours > 0) {
+                relativeTime = `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+            } else {
+                const diffMinutes = Math.floor(diffMs / (1000 * 60));
+                relativeTime = diffMinutes > 0 ? `${diffMinutes} minute${diffMinutes > 1 ? 's' : ''} ago` : 'Just now';
+            }
+
+            card.innerHTML = `
+                <div class="news-header">
+                    <div class="news-source">${article.source}</div>
+                    <div class="news-date">
+                        <div class="date-absolute">📅 ${formattedDate}</div>
+                        <div class="date-relative">${relativeTime}</div>
+                    </div>
+                </div>
+                <h3 class="news-headline">${article.headline}</h3>
+                <p class="news-summary">${article.summary}</p>
+                <div class="news-metadata">
+                    <div class="sentiment ${sentimentClass}">
+                        ${sentimentEmoji[sentimentClass] || '➡️'} ${article.sentiment}
+                    </div>
+                    <div class="confidence">Confidence: ${article.confidence}</div>
+                </div>
+                ${article.url ? `<a href="${article.url}" target="_blank" rel="noopener noreferrer" class="news-url">Read Full Article →</a>` : ''}
+            `;
+
+            return card;
+        }
+
+        function showLoading() {
+            document.getElementById('loadingSection').style.display = 'block';
+            document.getElementById('searchButton').disabled = true;
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingSection').style.display = 'none';
+            document.getElementById('searchButton').disabled = false;
+        }
+
+        function showError(message) {
+            const errorSection = document.getElementById('errorSection');
+            errorSection.textContent = message;
+            errorSection.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('errorSection').style.display = 'none';
+        }
+
+        function showResults() {
+            document.getElementById('resultsSection').style.display = 'block';
+        }
+
+        function hideResults() {
+            document.getElementById('resultsSection').style.display = 'none';
+        }
+
+        function showNoResults() {
+            document.getElementById('noResultsSection').style.display = 'block';
+        }
+
+        function hideNoResults() {
+            document.getElementById('noResultsSection').style.display = 'none';
+        }
+
+        // Sample data for demo (remove in production)
+        function loadSampleData() {
+            const sampleData = {
+                symbol: "BTC",
+                news: [
+                    {
+                        headline: "Bitcoin Reaches New All-Time High as Institutional Adoption Grows",
+                        summary: "Bitcoin has surged to unprecedented levels driven by increased institutional investment and growing acceptance as a store of value. Major corporations continue to add Bitcoin to their treasury reserves.",
+                        sentiment: "Bullish",
+                        confidence: "High",
+                        source: "CoinDesk",
+                        published_at: new Date().toISOString(),
+                        url: "https://example.com/bitcoin-news"
+                    },
+                    {
+                        headline: "Regulatory Concerns Cast Shadow Over Cryptocurrency Market",
+                        summary: "New regulatory proposals have introduced uncertainty into the cryptocurrency market, with traders taking a cautious approach amid potential policy changes.",
+                        sentiment: "Bearish",
+                        confidence: "Medium",
+                        source: "Cointelegraph",
+                        published_at: new Date().toISOString(),
+                        url: "https://example.com/crypto-regulation"
+                    }
+                ],
+                total_articles: 2,
+                timestamp: new Date().toISOString()
+            };
+            
+            displayResults(sampleData);
+        }
+
+        // Add sample data button (for demo purposes)
+        // Uncomment the line below to add a demo button
+        // setTimeout(() => { if (confirm('Load sample data for demo?')) loadSampleData(); }, 2000);
+    </script>
+</body>
+</html>
