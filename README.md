@@ -278,9 +278,6 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 3. Make changes with tests
 4. Submit a pull request
 
-## License
-
-[Add your license information here]
 
 ## Support
 
